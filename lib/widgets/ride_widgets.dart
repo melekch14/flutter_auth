@@ -201,17 +201,29 @@ class RideTextField extends StatelessWidget {
     required this.hint,
     required this.icon,
     this.obscure = false,
+    this.controller,
+    this.keyboardType,
+    this.textInputAction,
+    this.onChanged,
   });
 
   final String label;
   final String hint;
   final IconData icon;
   final bool obscure;
+  final TextEditingController? controller;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      controller: controller,
       obscureText: obscure,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      onChanged: onChanged,
       style: Theme.of(context).textTheme.bodySmall,
       decoration: InputDecoration(
         labelText: label,
@@ -229,10 +241,16 @@ class CountryCodePhoneField extends StatefulWidget {
     super.key,
     required this.label,
     required this.hint,
+    required this.controller,
+    required this.dialCode,
+    this.onChanged,
   });
 
   final String label;
   final String hint;
+  final TextEditingController controller;
+  final ValueNotifier<String> dialCode;
+  final VoidCallback? onChanged;
 
   @override
   State<CountryCodePhoneField> createState() => _CountryCodePhoneFieldState();
@@ -242,10 +260,21 @@ class _CountryCodePhoneFieldState extends State<CountryCodePhoneField> {
   CountryCode _selected = CountryCode(dialCode: '+216', code: 'TN');
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.dialCode.value.isNotEmpty) {
+      _selected = CountryCode(dialCode: widget.dialCode.value);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 46,
       child: TextField(
+        controller: widget.controller,
+        keyboardType: TextInputType.phone,
+        onChanged: (_) => widget.onChanged?.call(),
         textAlignVertical: TextAlignVertical.center,
         style: Theme.of(context).textTheme.bodySmall,
         decoration: InputDecoration(
@@ -254,78 +283,84 @@ class _CountryCodePhoneFieldState extends State<CountryCodePhoneField> {
           isDense: true,
           constraints: const BoxConstraints(minHeight: 46),
           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-          prefixIconConstraints:
-              const BoxConstraints(minWidth: 0, minHeight: 46),
+          prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 46),
           prefixIcon: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(width: 12),
-            const Icon(Icons.phone_outlined, size: 18),
-            const SizedBox(width: 8),
-            CountryCodePicker(
-              onChanged: (code) => setState(() => _selected = code),
-              initialSelection: _selected.code,
-              favorite: const ['+216', '+1', '+33', '+44'],
-              flagWidth: 18,
-              showFlag: true,
-              showDropDownButton: true,
-              showCountryOnly: false,
-              showOnlyCountryWhenClosed: false,
-              alignLeft: true,
-              padding: EdgeInsets.zero,
-              builder: (code) {
-                final dialCode = code?.dialCode ?? '';
-                final flagUri = code?.flagUri;
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (flagUri != null)
-                      Image.asset(
-                        flagUri,
-                        package: 'country_code_picker',
-                        width: 18,
-                        height: 14,
-                        fit: BoxFit.cover,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(width: 12),
+              const Icon(Icons.phone_outlined, size: 18),
+              const SizedBox(width: 8),
+              CountryCodePicker(
+                onChanged: (code) {
+                  setState(() => _selected = code);
+                  final dial = code.dialCode;
+                  if (dial != null && dial.isNotEmpty) {
+                    widget.dialCode.value = dial;
+                  }
+                  widget.onChanged?.call();
+                },
+                initialSelection: _selected.code ?? widget.dialCode.value,
+                favorite: const ['+216', '+1', '+33', '+44'],
+                flagWidth: 18,
+                showFlag: true,
+                showDropDownButton: true,
+                showCountryOnly: false,
+                showOnlyCountryWhenClosed: false,
+                alignLeft: true,
+                padding: EdgeInsets.zero,
+                builder: (code) {
+                  final dialCode = code?.dialCode ?? '';
+                  final flagUri = code?.flagUri;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (flagUri != null)
+                        Image.asset(
+                          flagUri,
+                          package: 'country_code_picker',
+                          width: 18,
+                          height: 14,
+                          fit: BoxFit.cover,
+                        ),
+                      if (flagUri != null) const SizedBox(width: 6),
+                      Text(
+                        dialCode,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    if (flagUri != null) const SizedBox(width: 6),
-                    Text(
-                      dialCode,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                );
-              },
-              textStyle: Theme.of(context).textTheme.bodySmall,
-              dialogTextStyle: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: AppColors.textPrimary),
-              searchStyle: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: AppColors.textPrimary),
-              dialogBackgroundColor: AppColors.surface,
-              barrierColor: Colors.black.withOpacity(0.7),
-              searchDecoration: InputDecoration(
-                hintText: 'Search country',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: AppColors.fieldFill,
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      const SizedBox(width: 6),
+                    ],
+                  );
+                },
+                textStyle: Theme.of(context).textTheme.bodySmall,
+                dialogTextStyle: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppColors.textPrimary),
+                searchStyle: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppColors.textPrimary),
+                dialogBackgroundColor: AppColors.surface,
+                barrierColor: Colors.black.withOpacity(0.7),
+                searchDecoration: InputDecoration(
+                  hintText: 'Search country',
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: AppColors.fieldFill,
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+                dialogSize: const Size(360, 520),
               ),
-              dialogSize: const Size(360, 520),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 1,
-              height: 18,
-              color: AppColors.stroke,
-            ),
-            const SizedBox(width: 8),
-          ],
+              const SizedBox(width: 4),
+              Container(
+                width: 1,
+                height: 18,
+                color: AppColors.stroke,
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
           prefixIconColor: AppColors.textMuted,
         ),
@@ -479,7 +514,8 @@ class RideTile extends StatelessWidget {
               color: AppColors.surfaceElevated,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(Icons.directions_car_filled, color: AppColors.accent),
+            child:
+                const Icon(Icons.directions_car_filled, color: AppColors.accent),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -1,6 +1,9 @@
 ﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import '../models/signup_data.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -8,26 +11,42 @@ import '../widgets/ride_widgets.dart';
 import 'login_screen.dart';
 
 class OtpScreen extends StatefulWidget {
-  const OtpScreen({super.key});
+  const OtpScreen({
+    super.key,
+    required this.data,
+    required this.verificationId,
+    this.resendToken,
+  });
+
+  final SignUpData data;
+  final String verificationId;
+  final int? resendToken;
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
 class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
-  static const int _otpLength = 4;
+  static const int _otpLength = 6;
   static const int _resendSeconds = 45;
 
   late final List<TextEditingController> _controllers;
   late final List<FocusNode> _focusNodes;
   Timer? _timer;
   int _secondsLeft = _resendSeconds;
+  bool _verifying = false;
+  String _verificationId = '';
+  int? _resendToken;
+  String? _errorMessage;
+
   late final AnimationController _shakeController;
   late final Animation<double> _shakeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _verificationId = widget.verificationId;
+    _resendToken = widget.resendToken;
     _controllers = List.generate(_otpLength, (_) => TextEditingController());
     _focusNodes = List.generate(_otpLength, (_) => FocusNode());
     _shakeController = AnimationController(
@@ -105,12 +124,6 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _resendCode() {
-    if (_secondsLeft == 0) {
-      _startTimer();
-    }
-  }
-
   bool _isOtpComplete() {
     return _controllers.every((controller) => controller.text.isNotEmpty);
   }
@@ -120,15 +133,107 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     _shakeController.forward(from: 0);
   }
 
-  void _verifyAndContinue() {
+  Future<void> _verifyAndContinue() async {
+    if (_verifying) return;
     if (!_isOtpComplete()) {
       _triggerShake();
       return;
     }
-    Navigator.of(context).pushAndRemoveUntil(
-      buildRideRoute(const LoginScreen()),
-      (route) => false,
-    );
+
+    final smsCode = _controllers.map((c) => c.text).join();
+    setState(() => _verifying = true);
+
+    try {
+      final credential = PhoneAuthProvider.credential(
+        verificationId: _verificationId,
+        smsCode: smsCode,
+      );
+
+      final phoneUser =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+
+      final emailCredential = EmailAuthProvider.credential(
+        email: widget.data.email,
+        password: widget.data.password,
+      );
+
+      await phoneUser.user?.linkWithCredential(emailCredential);
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        final dbRef = FirebaseDatabase.instance.ref('users/$uid');
+        await dbRef.set({
+          'firstName': widget.data.firstName,
+          'lastName': widget.data.lastName,
+          'email': widget.data.email,
+          'phone': widget.data.phone,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+      }
+
+      await FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        buildRideRoute(const LoginScreen()),
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      _setError(_mapAuthError(e));
+      _triggerShake();
+    } catch (_) {
+      _setError('Verification failed. Please try again.');
+      _triggerShake();
+    } finally {
+      if (mounted) {
+        setState(() => _verifying = false);
+      }
+    }
+  }
+
+  Future<void> _resendCode() async {
+    if (_secondsLeft != 0) return;
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: widget.data.phone,
+        forceResendingToken: _resendToken,
+        verificationCompleted: (_) {},
+        verificationFailed: (e) {
+          _setError(_mapAuthError(e));
+        },
+        codeSent: (verificationId, resendToken) {
+          setState(() {
+            _verificationId = verificationId;
+            _resendToken = resendToken;
+          });
+        },
+        codeAutoRetrievalTimeout: (_) {},
+      );
+      _startTimer();
+    } catch (_) {
+      _setError('OTP resend failed.');
+    }
+  }
+
+  void _setError(String message) {
+    setState(() => _errorMessage = message);
+  }
+
+  String _mapAuthError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-verification-code':
+        return 'Invalid code. Please try again.';
+      case 'session-expired':
+        return 'Code expired. Please request a new one.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait and try again.';
+      case 'billing-not-enabled':
+        return 'Phone auth requires billing enabled on Firebase.';
+      case 'app-not-authorized':
+        return 'App not authorized. Check SHA keys in Firebase.';
+      default:
+        return e.message ?? 'Verification failed.';
+    }
   }
 
   @override
@@ -168,7 +273,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                   DelayedFadeSlide(
                     delay: const Duration(milliseconds: 140),
                     child: Text(
-                      'Enter the 4-digit code we sent to +216 00 000 000.',
+                      'Enter the 6-digit code we sent to ${widget.data.phone}.',
                       style: Theme.of(context)
                           .textTheme
                           .bodyMedium
@@ -189,6 +294,13 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                       child: FrostedPanel(
                         child: Column(
                           children: [
+                          if (_errorMessage != null) ...[
+                              _InlineError(
+                                message: _errorMessage!,
+                                onDismiss: () => setState(() => _errorMessage = null),
+                              ),
+                              const SizedBox(height: 10),
+                            ],
                             Row(
                               children: List.generate(_otpLength, (index) {
                                 final isFilled =
@@ -239,7 +351,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                                         ),
                                       ),
                                       onChanged: (value) {
-                                        setState(() {});
+                                        setState(() => _errorMessage = null);
                                         if (value.isEmpty) {
                                           _handleOtpBackspace(index);
                                         } else {
@@ -279,7 +391,9 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                             ),
                             const SizedBox(height: 16),
                             PrimaryButton(
-                              label: 'Verify & Continue',
+                              label: _verifying
+                                  ? 'Verifying...'
+                                  : 'Verify & Continue',
                               onTap: _verifyAndContinue,
                             ),
                           ],
@@ -296,3 +410,44 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     );
   }
 }
+
+class _InlineError extends StatelessWidget {
+  const _InlineError({required this.message, required this.onDismiss});
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0x26FF5C5C),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x66FF5C5C)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Color(0xFFFF5C5C), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: const Color(0xFFFFC7C7)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onDismiss,
+            child: const Icon(Icons.close, color: Color(0xFFFFC7C7), size: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
