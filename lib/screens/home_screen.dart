@@ -1,10 +1,24 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
 import '../widgets/ride_widgets.dart';
+import 'login_screen.dart';
+import 'profile_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  Future<void> _logout(BuildContext context) async {
+    await FirebaseAuth.instance.signOut();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      buildRideRoute(const LoginScreen()),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,10 +57,41 @@ class HomeScreen extends StatelessWidget {
                           ],
                         ),
                         const Spacer(),
-                        const CircleAvatar(
-                          radius: 22,
-                          backgroundColor: AppColors.surfaceElevated,
-                          child: Icon(Icons.person, color: AppColors.accent),
+                        PopupMenuButton<String>(
+                          color: AppColors.surface,
+                          onSelected: (value) {
+                            if (value == 'logout') {
+                              _logout(context);
+                            } else if (value == 'profile') {
+                              Navigator.of(context).push(
+                                buildRideRoute(const ProfileScreen()),
+                              );
+                            } else if (value == 'settings') {
+                              Navigator.of(context).push(
+                                buildRideRoute(const SettingsScreen()),
+                              );
+                            }
+                          },
+                          itemBuilder: (context) => const [
+                            PopupMenuItem<String>(
+                              value: 'profile',
+                              child: Text('Profile'),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'settings',
+                              child: Text('Settings'),
+                            ),
+                            PopupMenuDivider(),
+                            PopupMenuItem<String>(
+                              value: 'logout',
+                              child: Text('Logout'),
+                            ),
+                          ],
+                          child: const CircleAvatar(
+                            radius: 22,
+                            backgroundColor: AppColors.surfaceElevated,
+                            child: Icon(Icons.person, color: AppColors.accent),
+                          ),
                         ),
                       ],
                     ),
@@ -167,6 +212,14 @@ class HomeScreen extends StatelessWidget {
         selectedItemColor: AppColors.accent,
         unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
+        currentIndex: 0,
+        onTap: (index) {
+          if (index == 3) {
+            Navigator.of(context).push(
+              buildRideRoute(const ProfileScreen()),
+            );
+          }
+        },
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_filled),
