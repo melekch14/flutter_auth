@@ -49,6 +49,7 @@ services:
       - "5050:80"
     volumes:
       - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/pgpass:/pgadmin4/pgpass:ro
     depends_on:
       db:
         condition: service_healthy
