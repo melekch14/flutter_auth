@@ -60,13 +60,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loading = true);
 
     try {
+      final availability = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/check-availability'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'phone': fullPhone}),
+      );
+      if (availability.statusCode >= 400) {
+        _setError(
+          _readError(
+            availability,
+            fallback: 'Email or phone already exists.',
+          ),
+        );
+        return;
+      }
+
       final response = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/auth/send-otp'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'phone': fullPhone}),
+        body: jsonEncode({'phone': fullPhone, 'email': email}),
       );
       if (response.statusCode >= 400) {
-        _setError('OTP failed. Please try again.');
+        _setError(_readError(response, fallback: 'OTP failed. Please try again.'));
       } else {
         final data = SignUpData(
           firstName: firstName,
@@ -94,6 +109,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _setError(String message) {
     setState(() => _errorMessage = message);
+  }
+
+  String _readError(http.Response response, {required String fallback}) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic>) {
+        final error = body['error']?.toString();
+        if (error != null && error.trim().isNotEmpty) {
+          return error;
+        }
+      }
+    } catch (_) {}
+    return fallback;
   }
 
   @override

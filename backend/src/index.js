@@ -152,9 +152,20 @@ async function bootstrap() {
   });
 
   app.post('/api/auth/send-otp', async (req, res) => {
-    const { phone } = req.body || {};
+    const { phone, email } = req.body || {};
     if (!phone) {
       return res.status(400).json({ error: 'Phone required.' });
+    }
+    if (email) {
+      const { rows } = await pool.query(
+        'SELECT 1 FROM users WHERE email = $1 OR phone = $2 LIMIT 1',
+        [email, phone]
+      );
+      if (rows.length > 0) {
+        return res
+          .status(409)
+          .json({ error: 'Email or phone already exists.' });
+      }
     }
     try {
       const verification = await twilioClient.verify.v2
@@ -164,6 +175,27 @@ async function bootstrap() {
     } catch (err) {
       console.error('Twilio send failed', err);
       return res.status(500).json({ error: 'OTP send failed.' });
+    }
+  });
+
+  app.post('/api/auth/check-availability', async (req, res) => {
+    const { email, phone } = req.body || {};
+    if (!email || !phone) {
+      return res.status(400).json({ error: 'Email and phone required.' });
+    }
+    try {
+      const { rows } = await pool.query(
+        'SELECT 1 FROM users WHERE email = $1 OR phone = $2 LIMIT 1',
+        [email, phone]
+      );
+      if (rows.length > 0) {
+        return res
+          .status(409)
+          .json({ error: 'Email or phone already exists.' });
+      }
+      return res.json({ available: true });
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error.' });
     }
   });
 
