@@ -463,6 +463,9 @@ async function bootstrap() {
     storage: multer.diskStorage({
       destination: async (req, _file, cb) => {
         try {
+          if (req.kycFolder) {
+            return cb(null, req.kycFolder);
+          }
           const { rows } = await poolRef.query(
             'SELECT first_name, last_name, role FROM users WHERE id = $1',
             [req.user.uid]
@@ -474,9 +477,7 @@ async function bootstrap() {
           if (user.role !== 'driver') {
             return cb(new Error('Only drivers can submit KYC'));
           }
-          const folderName = `${sanitizeFolder(
-            `${user.first_name}_${user.last_name}`
-          )}_${nowStamp()}`;
+          const folderName = `driver_${req.user.uid}`;
           const folderPath = path.join(uploadsRoot, folderName);
           await fs.mkdir(folderPath, { recursive: true });
           req.kycFolder = folderPath;
