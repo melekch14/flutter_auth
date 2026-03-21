@@ -1,6 +1,8 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:http/http.dart' as http;
+import '../services/session.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -14,15 +16,52 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  Future<DataSnapshot?>? _profileFuture;
+  static const String _backendBaseUrl = 'http://10.0.2.2:4000';
+  Future<Map<String, dynamic>?>? _profileFuture;
 
   @override
   void initState() {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      _profileFuture = FirebaseDatabase.instance.ref('users/$uid').get();
+      _profileFuture = _ensureSessionAndFetch(uid);
     }
+  }
+
+  Future<void> _ensureSession() async {
+    if (AppSession.jwt != null) return;
+    final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+    if (idToken == null) return;
+    final response = await http.post(
+      Uri.parse('$_backendBaseUrl/api/auth/session'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken,
+      },
+    );
+    if (response.statusCode >= 400) return;
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    AppSession.jwt = body['token']?.toString();
+    AppSession.uid = body['uid']?.toString();
+  }
+
+  Future<Map<String, dynamic>?> _ensureSessionAndFetch(String uid) async {
+    await _ensureSession();
+    return _fetchProfile(uid);
+  }
+
+  Future<Map<String, dynamic>?> _fetchProfile(String uid) async {
+    final response = await http.get(
+      Uri.parse('$_backendBaseUrl/api/users/$uid'),
+      headers: {
+        'Authorization': 'Bearer ' + (AppSession.jwt ?? ''),
+      },
+    );
+    if (response.statusCode >= 400) {
+      return null;
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['user'] as Map<String, dynamic>?;
   }
 
   @override
@@ -68,13 +107,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: FutureBuilder<DataSnapshot?>(
+                            child: FutureBuilder<Map<String, dynamic>?>(
                               future: _profileFuture,
                               builder: (context, snapshot) {
-                                final data = snapshot.data?.value;
-                                final map = data is Map ? data : null;
-                                final firstName = map?['firstName']?.toString();
-                                final lastName = map?['lastName']?.toString();
+                                final data = snapshot.data;
+                                final firstName = data?['first_name']?.toString();
+                                final lastName = data?['last_name']?.toString();
                                 final fullName =
                                     '${firstName ?? 'User'} ${lastName ?? ''}'.trim();
                                 return Column(
@@ -108,12 +146,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   DelayedFadeSlide(
                     delay: const Duration(milliseconds: 180),
                     child: FrostedPanel(
-                      child: FutureBuilder<DataSnapshot?>(
+                      child: FutureBuilder<Map<String, dynamic>?>(
                         future: _profileFuture,
                         builder: (context, snapshot) {
-                          final data = snapshot.data?.value;
-                          final map = data is Map ? data : null;
-                          final phone = map?['phone']?.toString() ??
+                          final data = snapshot.data;
+                          final phone = data?['phone']?.toString() ??
                               user?.phoneNumber ??
                               'Not set';
                           return Column(
@@ -186,3 +223,4 @@ class _InfoRow extends StatelessWidget {
     );
   }
 }
+

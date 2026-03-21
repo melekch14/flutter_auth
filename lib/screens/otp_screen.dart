@@ -1,9 +1,11 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:http/http.dart' as http;
 import '../models/signup_data.dart';
+import '../services/session.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -27,6 +29,7 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
+  static const String _backendBaseUrl = 'http://10.0.2.2:4000';
   static const int _otpLength = 6;
   static const int _resendSeconds = 45;
 
@@ -133,6 +136,26 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     _shakeController.forward(from: 0);
   }
 
+  Future<void> _createSession() async {
+    final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+    if (idToken == null) {
+      throw Exception('Missing Firebase token');
+    }
+    final response = await http.post(
+      Uri.parse('$_backendBaseUrl/api/auth/session'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + idToken,
+      },
+    );
+    if (response.statusCode >= 400) {
+      throw Exception('Session creation failed');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    AppSession.jwt = body['token']?.toString();
+    AppSession.uid = body['uid']?.toString();
+  }
+
   Future<void> _verifyAndContinue() async {
     if (_verifying) return;
     if (!_isOtpComplete()) {
@@ -159,19 +182,32 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
 
       await phoneUser.user?.linkWithCredential(emailCredential);
 
+      await _createSession();
+
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
-        final dbRef = FirebaseDatabase.instance.ref('users/$uid');
-        await dbRef.set({
-          'firstName': widget.data.firstName,
-          'lastName': widget.data.lastName,
-          'email': widget.data.email,
-          'phone': widget.data.phone,
-          'createdAt': DateTime.now().toIso8601String(),
-        });
+        final response = await http.post(
+          Uri.parse('$_backendBaseUrl/api/users'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (AppSession.jwt ?? ''),
+          },
+          body: jsonEncode({
+            'firebase_uid': uid,
+            'first_name': widget.data.firstName,
+            'last_name': widget.data.lastName,
+            'email': widget.data.email,
+            'phone': widget.data.phone,
+          }),
+        );
+        if (response.statusCode >= 400) {
+          throw Exception('Backend error');
+        }
       }
 
       await FirebaseAuth.instance.signOut();
+      AppSession.jwt = null;
+      AppSession.uid = null;
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -294,7 +330,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                       child: FrostedPanel(
                         child: Column(
                           children: [
-                          if (_errorMessage != null) ...[
+                            if (_errorMessage != null) ...[
                               _InlineError(
                                 message: _errorMessage!,
                                 onDismiss: () => setState(() => _errorMessage = null),
@@ -450,4 +486,5 @@ class _InlineError extends StatelessWidget {
     );
   }
 }
+
 
