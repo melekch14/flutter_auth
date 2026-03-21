@@ -40,6 +40,7 @@ services:
     image: dpage/pgadmin4:8
     container_name: ridewave-pgadmin
     restart: unless-stopped
+    user: "0"
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@ridewave.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
@@ -50,6 +51,7 @@ services:
     volumes:
       - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
       - ./pgadmin/pgpass:/pgadmin4/pgpass:ro
+    command: ["/bin/sh", "-c", "chmod 600 /pgadmin4/pgpass && /entrypoint.sh"]
     depends_on:
       db:
         condition: service_healthy

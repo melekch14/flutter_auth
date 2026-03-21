@@ -1,4 +1,4 @@
-﻿{
+{
   "Servers": {
     "1": {
       "Name": "ridewave-db",
@@ -7,6 +7,7 @@
       "Port": 5432,
       "MaintenanceDB": "postgres",
       "Username": "postgres",
+      "PassFile": "/pgadmin4/pgpass",
       "SSLMode": "prefer"
     }
   }
