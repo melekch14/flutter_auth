@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../models/signup_data.dart';
 import '../services/session.dart';
@@ -17,13 +16,9 @@ class OtpScreen extends StatefulWidget {
   const OtpScreen({
     super.key,
     required this.data,
-    required this.verificationId,
-    this.resendToken,
   });
 
   final SignUpData data;
-  final String verificationId;
-  final int? resendToken;
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -38,8 +33,6 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   Timer? _timer;
   int _secondsLeft = _resendSeconds;
   bool _verifying = false;
-  String _verificationId = '';
-  int? _resendToken;
   String? _errorMessage;
 
   late final AnimationController _shakeController;
@@ -48,8 +41,6 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _verificationId = widget.verificationId;
-    _resendToken = widget.resendToken;
     _controllers = List.generate(_otpLength, (_) => TextEditingController());
     _focusNodes = List.generate(_otpLength, (_) => FocusNode());
     _shakeController = AnimationController(
@@ -136,30 +127,6 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     _shakeController.forward(from: 0);
   }
 
-  Future<void> _createSession() async {
-    final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-    if (idToken == null) {
-      throw Exception('Missing Firebase token');
-    }
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/api/auth/session'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + idToken,
-      },
-    );
-    if (response.statusCode >= 400) {
-      throw Exception('Session creation failed');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final token = body['token']?.toString();
-    final uid = body['uid']?.toString();
-    if (token == null || uid == null) {
-      throw Exception('Session response invalid');
-    }
-    await AppSession.save(token: token, userId: uid);
-  }
-
   Future<void> _verifyAndContinue() async {
     if (_verifying) return;
     if (!_isOtpComplete()) {
@@ -171,55 +138,55 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     setState(() => _verifying = true);
 
     try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId,
-        smsCode: smsCode,
+      final verifyResponse = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': widget.data.phone,
+          'code': smsCode,
+        }),
       );
-
-      final phoneUser =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-
-      final emailCredential = EmailAuthProvider.credential(
-        email: widget.data.email,
-        password: widget.data.password,
-      );
-
-      await phoneUser.user?.linkWithCredential(emailCredential);
-
-      await _createSession();
-
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null) {
-        final response = await http.post(
-          Uri.parse('${ApiConfig.baseUrl}/api/users'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + (AppSession.jwt ?? ''),
-          },
-          body: jsonEncode({
-            'firebase_uid': uid,
-            'first_name': widget.data.firstName,
-            'last_name': widget.data.lastName,
-            'email': widget.data.email,
-            'phone': widget.data.phone,
-          }),
-        );
-        if (response.statusCode >= 400) {
-          throw Exception('Backend error');
-        }
+      if (verifyResponse.statusCode >= 400) {
+        _setError('Invalid code. Please try again.');
+        _triggerShake();
+        return;
       }
 
-      await FirebaseAuth.instance.signOut();
-      await AppSession.clear();
+      final registerResponse = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'first_name': widget.data.firstName,
+          'last_name': widget.data.lastName,
+          'email': widget.data.email,
+          'phone': widget.data.phone,
+          'password': widget.data.password,
+          'code': smsCode,
+        }),
+      );
+      if (registerResponse.statusCode >= 400) {
+        _setError('Registration failed. Please try again.');
+        _triggerShake();
+        return;
+      }
+
+      final body = jsonDecode(registerResponse.body) as Map<String, dynamic>;
+      final token = body['token']?.toString();
+      final user = body['user'] as Map<String, dynamic>?;
+      final uid = user?['id']?.toString();
+      if (token == null || uid == null) {
+        _setError('Registration failed. Please try again.');
+        _triggerShake();
+        return;
+      }
+
+      await AppSession.save(token: token, userId: uid);
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         buildRideRoute(const LoginScreen()),
         (route) => false,
       );
-    } on FirebaseAuthException catch (e) {
-      _setError(_mapAuthError(e));
-      _triggerShake();
     } catch (_) {
       _setError('Verification failed. Please try again.');
       _triggerShake();
@@ -233,21 +200,15 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   Future<void> _resendCode() async {
     if (_secondsLeft != 0) return;
     try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: widget.data.phone,
-        forceResendingToken: _resendToken,
-        verificationCompleted: (_) {},
-        verificationFailed: (e) {
-          _setError(_mapAuthError(e));
-        },
-        codeSent: (verificationId, resendToken) {
-          setState(() {
-            _verificationId = verificationId;
-            _resendToken = resendToken;
-          });
-        },
-        codeAutoRetrievalTimeout: (_) {},
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/send-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': widget.data.phone}),
       );
+      if (response.statusCode >= 400) {
+        _setError('OTP resend failed.');
+        return;
+      }
       _startTimer();
     } catch (_) {
       _setError('OTP resend failed.');
@@ -256,23 +217,6 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
 
   void _setError(String message) {
     setState(() => _errorMessage = message);
-  }
-
-  String _mapAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-verification-code':
-        return 'Invalid code. Please try again.';
-      case 'session-expired':
-        return 'Code expired. Please request a new one.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please wait and try again.';
-      case 'billing-not-enabled':
-        return 'Phone auth requires billing enabled on Firebase.';
-      case 'app-not-authorized':
-        return 'App not authorized. Check SHA keys in Firebase.';
-      default:
-        return e.message ?? 'Verification failed.';
-    }
   }
 
   @override

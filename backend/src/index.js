@@ -3,15 +3,15 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import jwt from 'jsonwebtoken';
-import admin from 'firebase-admin';
-import { readFileSync } from 'fs';
+import twilio from 'twilio';
+import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 
 dotenv.config();
 
 const { Pool } = pg;
 
-const PORT = Number(process.env.PORT || 4000);
+const PORT = Number(process.env.PORT || 5000);
 const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_PORT = Number(process.env.DB_PORT || 5432);
 const DB_USER = process.env.DB_USER || 'postgres';
@@ -19,8 +19,9 @@ const DB_PASSWORD = process.env.DB_PASSWORD || '';
 const DB_NAME = process.env.DB_NAME || 'ridewave';
 const DB_ADMIN_DB = process.env.DB_ADMIN_DB || 'postgres';
 const JWT_SECRET = process.env.JWT_SECRET || 'change_me';
-const FIREBASE_SERVICE_ACCOUNT_PATH =
-  process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './serviceAccountKey.json';
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
+const TWILIO_VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID || '';
 
 const adminConfig = {
   host: DB_HOST,
@@ -39,15 +40,13 @@ const appConfig = {
 };
 
 let poolRef = null;
+let twilioClient = null;
 
-function initFirebaseAdmin() {
-  if (admin.apps.length) return;
-  const serviceAccount = JSON.parse(
-    readFileSync(FIREBASE_SERVICE_ACCOUNT_PATH, 'utf8')
-  );
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
+function initTwilio() {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_VERIFY_SERVICE_SID) {
+    throw new Error('Missing Twilio configuration');
+  }
+  twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 }
 
 async function createDatabaseIfNotExists() {
@@ -71,15 +70,21 @@ async function runMigrations(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      firebase_uid text UNIQUE NOT NULL,
       first_name text NOT NULL,
       last_name text NOT NULL,
       email text NOT NULL,
       phone text NOT NULL,
+      password_hash text NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await pool.query(
+    'CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (email)'
+  );
+  await pool.query(
+    'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_key ON users (phone)'
+  );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS revoked_tokens (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -121,7 +126,7 @@ function requireJwt() {
 }
 
 async function bootstrap() {
-  initFirebaseAdmin();
+  initTwilio();
   await createDatabaseIfNotExists();
   const pool = new Pool(appConfig);
   poolRef = pool;
@@ -135,34 +140,109 @@ async function bootstrap() {
     res.json({ ok: true });
   });
 
-  app.post('/api/auth/session', async (req, res) => {
-    const auth = req.headers.authorization || '';
-    const idToken = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    if (!idToken) {
-      return res.status(401).json({ error: 'Missing Firebase token.' });
+  app.post('/api/auth/send-otp', async (req, res) => {
+    const { phone } = req.body || {};
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone required.' });
     }
     try {
-      const decoded = await admin.auth().verifyIdToken(idToken);
-      const { token } = issueJwt(decoded.uid);
-      return res.json({ token, uid: decoded.uid });
+      const verification = await twilioClient.verify.v2
+        .services(TWILIO_VERIFY_SERVICE_SID)
+        .verifications.create({ to: phone, channel: 'sms' });
+      return res.json({ status: verification.status });
     } catch (err) {
-      console.error('Firebase token verify failed', err);
-      return res.status(401).json({ error: 'Invalid Firebase token.' });
+      console.error('Twilio send failed', err);
+      return res.status(500).json({ error: 'OTP send failed.' });
     }
   });
 
-  app.post('/api/auth/refresh', async (req, res) => {
-    const auth = req.headers.authorization || '';
-    const idToken = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    if (!idToken) {
-      return res.status(401).json({ error: 'Missing Firebase token.' });
+  app.post('/api/auth/verify-otp', async (req, res) => {
+    const { phone, code } = req.body || {};
+    if (!phone || !code) {
+      return res.status(400).json({ error: 'Phone and code required.' });
     }
     try {
-      const decoded = await admin.auth().verifyIdToken(idToken);
-      const { token } = issueJwt(decoded.uid);
-      return res.json({ token, uid: decoded.uid });
+      const check = await twilioClient.verify.v2
+        .services(TWILIO_VERIFY_SERVICE_SID)
+        .verificationChecks.create({ to: phone, code });
+      const approved = check.status === 'approved';
+      if (!approved) {
+        return res.status(400).json({ error: 'Invalid code.' });
+      }
+      return res.json({ approved: true });
     } catch (err) {
-      return res.status(401).json({ error: 'Invalid Firebase token.' });
+      console.error('Twilio verify failed', err);
+      return res.status(500).json({ error: 'OTP verify failed.' });
+    }
+  });
+
+  app.post('/api/auth/register', async (req, res) => {
+    const { first_name, last_name, email, phone, password, code } =
+      req.body || {};
+    if (!first_name || !last_name || !email || !phone || !password || !code) {
+      return res.status(400).json({ error: 'Missing required fields.' });
+    }
+
+    try {
+      const check = await twilioClient.verify.v2
+        .services(TWILIO_VERIFY_SERVICE_SID)
+        .verificationChecks.create({ to: phone, code });
+      if (check.status !== 'approved') {
+        return res.status(400).json({ error: 'Invalid code.' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const query = `
+        INSERT INTO users (first_name, last_name, email, phone, password_hash)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, first_name, last_name, email, phone
+      `;
+      const values = [first_name, last_name, email, phone, passwordHash];
+      const { rows } = await pool.query(query, values);
+      const { token } = issueJwt(rows[0].id);
+      return res.json({ token, user: rows[0] });
+    } catch (err) {
+      if (err?.code === '23505') {
+        return res.status(409).json({ error: 'Email or phone already exists.' });
+      }
+      console.error('Register failed', err);
+      return res.status(500).json({ error: 'Register failed.' });
+    }
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required.' });
+    }
+
+    try {
+      const { rows } = await pool.query(
+        'SELECT * FROM users WHERE email = $1',
+        [email]
+      );
+      if (rows.length === 0) {
+        return res.status(401).json({ error: 'Invalid credentials.' });
+      }
+      const user = rows[0];
+      const ok = await bcrypt.compare(password, user.password_hash);
+      if (!ok) {
+        return res.status(401).json({ error: 'Invalid credentials.' });
+      }
+      const { token } = issueJwt(user.id);
+      return res.json({
+        token,
+        user: {
+          id: user.id,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          email: user.email,
+          phone: user.phone,
+        },
+      });
+    } catch (err) {
+      console.error('Login failed', err);
+      return res.status(500).json({ error: 'Login failed.' });
     }
   });
 
@@ -180,55 +260,17 @@ async function bootstrap() {
     }
   });
 
-  app.post('/api/users', requireJwt(), async (req, res) => {
-    const { firebase_uid, first_name, last_name, email, phone } = req.body || {};
-
-    if (!firebase_uid || !first_name || !last_name || !email || !phone) {
-      return res.status(400).json({ error: 'Missing required fields.' });
-    }
-
-    if (firebase_uid !== req.user.uid) {
-      return res.status(403).json({ error: 'UID mismatch.' });
-    }
-
-    try {
-      const query = `
-        INSERT INTO users (firebase_uid, first_name, last_name, email, phone)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (firebase_uid)
-        DO UPDATE SET
-          first_name = EXCLUDED.first_name,
-          last_name = EXCLUDED.last_name,
-          email = EXCLUDED.email,
-          phone = EXCLUDED.phone,
-          updated_at = now()
-        RETURNING *
-      `;
-      const values = [firebase_uid, first_name, last_name, email, phone];
-      const { rows } = await pool.query(query, values);
-      return res.json({ user: rows[0] });
-    } catch (err) {
-      console.error('User upsert failed', err);
-      return res.status(500).json({ error: 'Server error.' });
-    }
-  });
-
-  app.get('/api/users/:firebaseUid', requireJwt(), async (req, res) => {
-    const { firebaseUid } = req.params;
-    if (firebaseUid !== req.user.uid) {
-      return res.status(403).json({ error: 'UID mismatch.' });
-    }
+  app.get('/api/auth/me', requireJwt(), async (req, res) => {
     try {
       const { rows } = await pool.query(
-        'SELECT * FROM users WHERE firebase_uid = $1',
-        [firebaseUid]
+        'SELECT id, first_name, last_name, email, phone FROM users WHERE id = $1',
+        [req.user.uid]
       );
       if (rows.length === 0) {
         return res.status(404).json({ error: 'User not found.' });
       }
       return res.json({ user: rows[0] });
     } catch (err) {
-      console.error('User fetch failed', err);
       return res.status(500).json({ error: 'Server error.' });
     }
   });

@@ -1,6 +1,5 @@
 ﻿import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../services/session.dart';
 import '../services/api_config.dart';
@@ -31,30 +30,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _createSession() async {
-    final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-    if (idToken == null) {
-      throw Exception('Missing Firebase token');
-    }
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/api/auth/session'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + idToken,
-      },
-    );
-    if (response.statusCode >= 400) {
-      throw Exception('Session creation failed');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final token = body['token']?.toString();
-    final uid = body['uid']?.toString();
-    if (token == null || uid == null) {
-      throw Exception('Session response invalid');
-    }
-    await AppSession.save(token: token, userId: uid);
-  }
-
   Future<void> _login() async {
     if (_loading) return;
     final email = _emailController.text.trim();
@@ -67,17 +42,29 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _loading = true);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
       );
-      await _createSession();
+      if (response.statusCode >= 400) {
+        _setError('Invalid email or password.');
+        return;
+      }
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final token = body['token']?.toString();
+      final user = body['user'] as Map<String, dynamic>?;
+      final uid = user?['id']?.toString();
+      if (token == null || uid == null) {
+        _setError('Login failed.');
+        return;
+      }
+      await AppSession.save(token: token, userId: uid);
+
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         buildRideRoute(const HomeScreen()),
       );
-    } on FirebaseAuthException catch (e) {
-      _setError(_mapAuthError(e));
     } catch (_) {
       _setError('Login failed. Please try again.');
     } finally {
@@ -89,24 +76,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _setError(String message) {
     setState(() => _errorMessage = message);
-  }
-
-  String _mapAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-email':
-        return 'That email address looks invalid.';
-      case 'user-not-found':
-        return 'No account found for this email.';
-      case 'wrong-password':
-      case 'invalid-credential':
-        return 'Incorrect email or password.';
-      case 'user-disabled':
-        return 'This account has been disabled.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please wait and try again.';
-      default:
-        return e.message ?? 'Login failed.';
-    }
   }
 
   @override

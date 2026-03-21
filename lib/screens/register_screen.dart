@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../models/signup_data.dart';
+import '../services/api_config.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -58,34 +60,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loading = true);
 
     try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: fullPhone,
-        verificationCompleted: (credential) {},
-        verificationFailed: (e) {
-          _setError(_mapAuthError(e));
-        },
-        codeSent: (verificationId, resendToken) {
-          final data = SignUpData(
-            firstName: firstName,
-            lastName: lastName,
-            email: email,
-            phone: fullPhone,
-            password: password,
-          );
-          Navigator.of(context).push(
-            buildRideRoute(
-              OtpScreen(
-                data: data,
-                verificationId: verificationId,
-                resendToken: resendToken,
-              ),
-            ),
-          );
-        },
-        codeAutoRetrievalTimeout: (_) {},
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/send-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'phone': fullPhone}),
       );
-    } on FirebaseAuthException catch (e) {
-      _setError(_mapAuthError(e));
+      if (response.statusCode >= 400) {
+        _setError('OTP failed. Please try again.');
+      } else {
+        final data = SignUpData(
+          firstName: firstName,
+          lastName: lastName,
+          email: email,
+          phone: fullPhone,
+          password: password,
+        );
+        Navigator.of(context).push(
+          buildRideRoute(
+            OtpScreen(
+              data: data,
+            ),
+          ),
+        );
+      }
     } catch (_) {
       _setError('OTP failed. Please try again.');
     } finally {
@@ -97,22 +94,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _setError(String message) {
     setState(() => _errorMessage = message);
-  }
-
-  String _mapAuthError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-phone-number':
-        return 'That phone number looks invalid.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please wait and try again.';
-      case 'captcha-check-failed':
-      case 'missing-recaptcha-token':
-        return 'reCAPTCHA check failed. Please try again.';
-      case 'app-not-authorized':
-        return 'App not authorized. Check SHA keys in Firebase.';
-      default:
-        return e.message ?? 'OTP failed.';
-    }
   }
 
   @override

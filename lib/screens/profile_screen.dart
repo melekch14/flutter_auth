@@ -1,6 +1,5 @@
 ﻿import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../services/session.dart';
 import '../services/api_config.dart';
@@ -22,39 +21,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      _profileFuture = _ensureSessionAndFetch(uid);
+    if (AppSession.jwt != null) {
+      _profileFuture = _fetchProfile();
     }
   }
 
-  Future<void> _ensureSession() async {
-    if (AppSession.jwt != null) return;
-    final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
-    if (idToken == null) return;
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/api/auth/session'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + idToken,
-      },
-    );
-    if (response.statusCode >= 400) return;
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final token = body['token']?.toString();
-    final uid = body['uid']?.toString();
-    if (token == null || uid == null) return;
-    await AppSession.save(token: token, userId: uid);
-  }
-
-  Future<Map<String, dynamic>?> _ensureSessionAndFetch(String uid) async {
-    await _ensureSession();
-    return _fetchProfile(uid);
-  }
-
-  Future<Map<String, dynamic>?> _fetchProfile(String uid) async {
+  Future<Map<String, dynamic>?> _fetchProfile() async {
     final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}/api/users/$uid'),
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/me'),
       headers: {
         'Authorization': 'Bearer ' + (AppSession.jwt ?? ''),
       },
@@ -68,8 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
     return Scaffold(
       body: Stack(
         children: [
@@ -129,7 +101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      user?.email ?? 'No email',
+                                      data?['email']?.toString() ?? 'No email',
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
@@ -152,15 +124,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         future: _profileFuture,
                         builder: (context, snapshot) {
                           final data = snapshot.data;
-                          final phone = data?['phone']?.toString() ??
-                              user?.phoneNumber ??
-                              'Not set';
+                          final phone =
+                              data?['phone']?.toString() ?? 'Not set';
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _InfoRow(
                                 label: 'Email',
-                                value: user?.email ?? 'Not set',
+                                value: data?['email']?.toString() ?? 'Not set',
                               ),
                               const SizedBox(height: 10),
                               _InfoRow(

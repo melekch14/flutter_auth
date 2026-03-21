@@ -1,5 +1,4 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../services/session.dart';
 import '../services/api_config.dart';
@@ -21,7 +20,6 @@ class HomeScreen extends StatelessWidget {
         headers: {'Authorization': 'Bearer ' + AppSession.jwt!},
       );
     }
-    await FirebaseAuth.instance.signOut();
     await AppSession.clear();
     if (!context.mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
