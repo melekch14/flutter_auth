@@ -6,6 +6,7 @@ import 'services/api_config.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/kyc_screen.dart';
+import 'screens/kyc_pending_screen.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -57,9 +58,9 @@ class _AuthGateState extends State<_AuthGate> {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final user = body['user'] as Map<String, dynamic>?;
       final status = user?['status']?.toString() ?? 'not_verified';
-      return status == 'verified'
-          ? _AuthState.verified
-          : _AuthState.needsKyc;
+      if (status == 'verified') return _AuthState.verified;
+      if (status == 'pending') return _AuthState.pending;
+      return _AuthState.needsKyc;
     } catch (_) {
       return _AuthState.loggedOut;
     }
@@ -79,6 +80,8 @@ class _AuthGateState extends State<_AuthGate> {
         switch (state) {
           case _AuthState.verified:
             return const HomeScreen();
+          case _AuthState.pending:
+            return const KycPendingScreen();
           case _AuthState.needsKyc:
             return const KycScreen();
           case _AuthState.loggedOut:
@@ -90,4 +93,4 @@ class _AuthGateState extends State<_AuthGate> {
   }
 }
 
-enum _AuthState { loggedOut, verified, needsKyc }
+enum _AuthState { loggedOut, verified, pending, needsKyc }

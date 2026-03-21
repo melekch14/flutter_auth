@@ -35,6 +35,7 @@ dependencies:
   country_code_picker: ^3.0.0
   http: ^1.2.2
   flutter_secure_storage: ^9.2.2
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,10 @@ import pg from 'pg';
 import jwt from 'jsonwebtoken';
 import twilio from 'twilio';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 
 dotenv.config();
@@ -54,6 +58,30 @@ const appConfig = {
 
 let poolRef = null;
 let twilioClient = null;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsRoot = path.resolve(__dirname, '..', 'uploads');
+
+async function ensureUploadsRoot() {
+  await fs.mkdir(uploadsRoot, { recursive: true });
+}
+
+function sanitizeFolder(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+}
+
+function nowStamp() {
+  const d = new Date();
+  const pad = (n) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(
+    d.getHours()
+  )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
 
 function initTwilio() {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_VERIFY_SERVICE_SID) {
@@ -158,6 +186,7 @@ function requireJwt() {
 
 async function bootstrap() {
   initTwilio();
+  await ensureUploadsRoot();
   await createDatabaseIfNotExists();
   const pool = new Pool(appConfig);
   poolRef = pool;
@@ -429,6 +458,75 @@ async function bootstrap() {
       return res.status(500).json({ error: 'Server error.' });
     }
   });
+
+  const upload = multer({
+    storage: multer.diskStorage({
+      destination: async (req, _file, cb) => {
+        try {
+          const { rows } = await poolRef.query(
+            'SELECT first_name, last_name, role FROM users WHERE id = $1',
+            [req.user.uid]
+          );
+          if (rows.length === 0) {
+            return cb(new Error('User not found'));
+          }
+          const user = rows[0];
+          if (user.role !== 'driver') {
+            return cb(new Error('Only drivers can submit KYC'));
+          }
+          const folderName = `${sanitizeFolder(
+            `${user.first_name}_${user.last_name}`
+          )}_${nowStamp()}`;
+          const folderPath = path.join(uploadsRoot, folderName);
+          await fs.mkdir(folderPath, { recursive: true });
+          req.kycFolder = folderPath;
+          cb(null, folderPath);
+        } catch (err) {
+          cb(err);
+        }
+      },
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname) || '';
+        const safeExt = ext.length <= 8 ? ext : '';
+        const name = file.fieldname;
+        cb(null, `${name}${safeExt}`);
+      },
+    }),
+    limits: { fileSize: 8 * 1024 * 1024 },
+  });
+
+  app.post(
+    '/api/kyc/upload',
+    requireJwt(),
+    upload.fields([
+      { name: 'id_card', maxCount: 1 },
+      { name: 'driver_license', maxCount: 1 },
+      { name: 'selfie', maxCount: 1 },
+    ]),
+    async (req, res) => {
+      const files = req.files || {};
+      const hasId = Array.isArray(files.id_card) && files.id_card.length > 0;
+      const hasLicense =
+        Array.isArray(files.driver_license) &&
+        files.driver_license.length > 0;
+      const hasSelfie =
+        Array.isArray(files.selfie) && files.selfie.length > 0;
+
+      if (!hasId || !hasLicense || !hasSelfie) {
+        return res.status(400).json({ error: 'All documents are required.' });
+      }
+
+      try {
+        await poolRef.query(
+          "UPDATE users SET status = 'pending', updated_at = now() WHERE id = $1",
+          [req.user.uid]
+        );
+        return res.json({ ok: true, status: 'pending' });
+      } catch (err) {
+        return res.status(500).json({ error: 'Server error.' });
+      }
+    }
+  );
 
   app.listen(PORT, () => {
     console.log(`Backend running on http://localhost:${PORT}`);

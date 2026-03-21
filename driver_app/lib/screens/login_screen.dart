@@ -7,7 +7,9 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
 import '../widgets/ride_widgets.dart';
+import 'home_screen.dart';
 import 'kyc_screen.dart';
+import 'kyc_pending_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -61,10 +63,31 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       await AppSession.save(token: token, userId: uid);
 
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        buildRideRoute(const KycScreen()),
+      final me = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/me'),
+        headers: {'Authorization': 'Bearer ' + token},
       );
+      String status = 'not_verified';
+      if (me.statusCode < 400) {
+        final meBody = jsonDecode(me.body) as Map<String, dynamic>;
+        final userBody = meBody['user'] as Map<String, dynamic>?;
+        status = userBody?['status']?.toString() ?? 'not_verified';
+      }
+
+      if (!mounted) return;
+      if (status == 'verified') {
+        Navigator.of(context).pushReplacement(
+          buildRideRoute(const HomeScreen()),
+        );
+      } else if (status == 'pending') {
+        Navigator.of(context).pushReplacement(
+          buildRideRoute(const KycPendingScreen()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          buildRideRoute(const KycScreen()),
+        );
+      }
     } catch (_) {
       _setError('Login failed. Please try again.');
     } finally {

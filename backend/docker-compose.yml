@@ -30,6 +30,7 @@ services:
       - "5000:5000"
     volumes:
       - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+      - ./uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
