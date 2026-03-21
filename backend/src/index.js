@@ -23,6 +23,17 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID || '';
 
+function maskValue(value) {
+  if (!value) return '(empty)';
+  if (value.length <= 6) return value;
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+console.log('Twilio config:', {
+  account: maskValue(TWILIO_ACCOUNT_SID),
+  verifyService: maskValue(TWILIO_VERIFY_SERVICE_SID),
+});
+
 const adminConfig = {
   host: DB_HOST,
   port: DB_PORT,

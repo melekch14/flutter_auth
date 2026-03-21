@@ -147,7 +147,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
         }),
       );
       if (verifyResponse.statusCode >= 400) {
-        _setError('Invalid code. Please try again.');
+        _setError(_readError(verifyResponse, fallback: 'Invalid code. Please try again.'));
         _triggerShake();
         return;
       }
@@ -165,7 +165,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
         }),
       );
       if (registerResponse.statusCode >= 400) {
-        _setError('Registration failed. Please try again.');
+        _setError(_readError(registerResponse, fallback: 'Registration failed. Please try again.'));
         _triggerShake();
         return;
       }
@@ -206,7 +206,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
         body: jsonEncode({'phone': widget.data.phone}),
       );
       if (response.statusCode >= 400) {
-        _setError('OTP resend failed.');
+        _setError(_readError(response, fallback: 'OTP resend failed.'));
         return;
       }
       _startTimer();
@@ -217,6 +217,23 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
 
   void _setError(String message) {
     setState(() => _errorMessage = message);
+  }
+
+  String _readError(http.Response response, {required String fallback}) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic>) {
+        final message = body['message']?.toString();
+        if (message != null && message.trim().isNotEmpty) {
+          return message;
+        }
+        final error = body['error']?.toString();
+        if (error != null && error.trim().isNotEmpty) {
+          return error;
+        }
+      }
+    } catch (_) {}
+    return fallback;
   }
 
   @override
