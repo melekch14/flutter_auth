@@ -13,6 +13,11 @@ services:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-ridewave}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build: .
@@ -24,11 +29,12 @@ services:
       DB_HOST: db
       DB_PORT: 5432
     ports:
-      - "4000:4000"
+      - "5000:5000"
     volumes:
       - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   pgadmin:
     image: dpage/pgadmin4:8
@@ -37,10 +43,15 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@ridewave.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
     ports:
       - "5050:80"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   pg_data:
