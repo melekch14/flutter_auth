@@ -138,20 +138,6 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     setState(() => _verifying = true);
 
     try {
-      final verifyResponse = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/auth/verify-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': widget.data.phone,
-          'code': smsCode,
-        }),
-      );
-      if (verifyResponse.statusCode >= 400) {
-        _setError(_readError(verifyResponse, fallback: 'Invalid code. Please try again.'));
-        _triggerShake();
-        return;
-      }
-
       final registerResponse = await http.post(
         Uri.parse('${ApiConfig.baseUrl}/api/auth/register'),
         headers: {'Content-Type': 'application/json'},
