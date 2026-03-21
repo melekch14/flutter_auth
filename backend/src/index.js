@@ -22,6 +22,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'change_me';
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || '';
 const TWILIO_VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID || '';
+const ALLOW_DUPLICATE_PHONE =
+  (process.env.ALLOW_DUPLICATE_PHONE || 'true').toLowerCase() === 'true';
 
 function maskValue(value) {
   if (!value) return '(empty)';
@@ -101,9 +103,13 @@ async function runMigrations(pool) {
   await pool.query(
     'CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (email)'
   );
-  await pool.query(
-    'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_key ON users (phone)'
-  );
+  if (ALLOW_DUPLICATE_PHONE) {
+    await pool.query('DROP INDEX IF EXISTS users_phone_key');
+  } else {
+    await pool.query(
+      'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_key ON users (phone)'
+    );
+  }
   await pool.query(
     "UPDATE users SET role = 'client' WHERE role IS NULL"
   );
@@ -172,13 +178,17 @@ async function bootstrap() {
     }
     if (email) {
       const { rows } = await pool.query(
-        'SELECT 1 FROM users WHERE email = $1 OR phone = $2 LIMIT 1',
-        [email, phone]
+        ALLOW_DUPLICATE_PHONE
+          ? 'SELECT 1 FROM users WHERE email = $1 LIMIT 1'
+          : 'SELECT 1 FROM users WHERE email = $1 OR phone = $2 LIMIT 1',
+        ALLOW_DUPLICATE_PHONE ? [email] : [email, phone]
       );
       if (rows.length > 0) {
-        return res
-          .status(409)
-          .json({ error: 'Email or phone already exists.' });
+        return res.status(409).json({
+          error: ALLOW_DUPLICATE_PHONE
+              ? 'Email already exists.'
+              : 'Email or phone already exists.',
+        });
       }
     }
     try {
@@ -194,18 +204,22 @@ async function bootstrap() {
 
   app.post('/api/auth/check-availability', async (req, res) => {
     const { email, phone } = req.body || {};
-    if (!email || !phone) {
-      return res.status(400).json({ error: 'Email and phone required.' });
+    if (!email) {
+      return res.status(400).json({ error: 'Email required.' });
     }
     try {
       const { rows } = await pool.query(
-        'SELECT 1 FROM users WHERE email = $1 OR phone = $2 LIMIT 1',
-        [email, phone]
+        ALLOW_DUPLICATE_PHONE
+          ? 'SELECT 1 FROM users WHERE email = $1 LIMIT 1'
+          : 'SELECT 1 FROM users WHERE email = $1 OR phone = $2 LIMIT 1',
+        ALLOW_DUPLICATE_PHONE ? [email] : [email, phone]
       );
       if (rows.length > 0) {
-        return res
-          .status(409)
-          .json({ error: 'Email or phone already exists.' });
+        return res.status(409).json({
+          error: ALLOW_DUPLICATE_PHONE
+              ? 'Email already exists.'
+              : 'Email or phone already exists.',
+        });
       }
       return res.json({ available: true });
     } catch (err) {
@@ -274,7 +288,11 @@ async function bootstrap() {
       return res.json({ token, user: rows[0] });
     } catch (err) {
       if (err?.code === '23505') {
-        return res.status(409).json({ error: 'Email or phone already exists.' });
+        return res.status(409).json({
+          error: ALLOW_DUPLICATE_PHONE
+              ? 'Email already exists.'
+              : 'Email or phone already exists.',
+        });
       }
       console.error('Register failed', err);
       return res.status(500).json({ error: 'Register failed.' });
