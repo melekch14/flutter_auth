@@ -205,6 +205,8 @@ class RideTextField extends StatelessWidget {
     this.keyboardType,
     this.textInputAction,
     this.onChanged,
+    this.enabled,
+    this.readOnly = false,
   });
 
   final String label;
@@ -215,12 +217,16 @@ class RideTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onChanged;
+  final bool? enabled;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       obscureText: obscure,
+      enabled: enabled,
+      readOnly: readOnly,
       keyboardType: keyboardType,
       textInputAction: textInputAction,
       onChanged: onChanged,

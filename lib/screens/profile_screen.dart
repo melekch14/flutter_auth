@@ -179,6 +179,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_profileFuture == null && AppSession.jwt != null) {
+      _profileFuture = _fetchProfile();
+    }
+
     return Scaffold(
       body: Stack(
         children: [
@@ -221,6 +225,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: FutureBuilder<Map<String, dynamic>?>(
                               future: _profileFuture,
                               builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return Text(
+                                    'Loading...',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: AppColors.textMuted),
+                                  );
+                                }
                                 final data = snapshot.data;
                                 final firstName = data?['first_name']?.toString();
                                 final lastName = data?['last_name']?.toString();
@@ -309,7 +323,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             controller: _phoneController,
                             keyboardType: TextInputType.phone,
                             textInputAction: TextInputAction.done,
-                            enabled: false,
+                            readOnly: true,
                           ),
                           const SizedBox(height: 12),
                           PrimaryButton(

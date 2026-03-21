@@ -49,6 +49,7 @@ services:
     ports:
       - "5050:80"
     volumes:
+      - pgadmin_data:/var/lib/pgadmin
       - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
       - ./pgadmin/pgpass:/pgadmin4/pgpass:ro
     command: ["/bin/sh", "-c", "chmod 600 /pgadmin4/pgpass && /entrypoint.sh"]
@@ -58,3 +59,4 @@ services:
 
 volumes:
   pg_data:
+  pgadmin_data:
