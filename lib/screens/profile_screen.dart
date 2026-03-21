@@ -91,7 +91,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'first_name': _firstNameController.text.trim(),
           'last_name': _lastNameController.text.trim(),
           'email': _emailController.text.trim(),
-          'phone': _phoneController.text.trim(),
         }),
       );
       if (response.statusCode >= 400) {
@@ -310,6 +309,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             controller: _phoneController,
                             keyboardType: TextInputType.phone,
                             textInputAction: TextInputAction.done,
+                            enabled: false,
                           ),
                           const SizedBox(height: 12),
                           PrimaryButton(

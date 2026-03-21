@@ -319,27 +319,25 @@ async function bootstrap() {
   });
 
   app.put('/api/auth/me', requireJwt(), async (req, res) => {
-    const { first_name, last_name, email, phone } = req.body || {};
-    if (!first_name || !last_name || !email || !phone) {
+    const { first_name, last_name, email } = req.body || {};
+    if (!first_name || !last_name || !email) {
       return res.status(400).json({ error: 'All fields are required.' });
     }
     try {
       const { rows: dup } = await pool.query(
-        'SELECT 1 FROM users WHERE (email = $1 OR phone = $2) AND id <> $3 LIMIT 1',
-        [email, phone, req.user.uid]
+        'SELECT 1 FROM users WHERE email = $1 AND id <> $2 LIMIT 1',
+        [email, req.user.uid]
       );
       if (dup.length > 0) {
-        return res
-          .status(409)
-          .json({ error: 'Email or phone already exists.' });
+        return res.status(409).json({ error: 'Email already exists.' });
       }
 
       const { rows } = await pool.query(
         `UPDATE users
-         SET first_name = $1, last_name = $2, email = $3, phone = $4, updated_at = now()
-         WHERE id = $5
+         SET first_name = $1, last_name = $2, email = $3, updated_at = now()
+         WHERE id = $4
          RETURNING id, first_name, last_name, email, phone`,
-        [first_name, last_name, email, phone, req.user.uid]
+        [first_name, last_name, email, req.user.uid]
       );
       if (rows.length === 0) {
         return res.status(404).json({ error: 'User not found.' });
