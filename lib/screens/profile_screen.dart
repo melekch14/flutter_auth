@@ -7,6 +7,8 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
 import '../widgets/ride_widgets.dart';
+import 'home_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -418,6 +420,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: AppColors.surface,
+        selectedItemColor: AppColors.accent,
+        unselectedItemColor: AppColors.textMuted,
+        type: BottomNavigationBarType.fixed,
+        currentIndex: 3,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.of(context).pushAndRemoveUntil(
+              buildRideRoute(const HomeScreen()),
+              (route) => false,
+            );
+          } else if (index == 3) {
+            // already on profile
+          } else if (index == 2) {
+            Navigator.of(context).pushAndRemoveUntil(
+              buildRideRoute(const HomeScreen()),
+              (route) => false,
+            );
+          } else if (index == 1) {
+            Navigator.of(context).pushAndRemoveUntil(
+              buildRideRoute(const HomeScreen()),
+              (route) => false,
+            );
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_filled),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map_outlined),
+            label: 'Map',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long_outlined),
+            label: 'Trips',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
           ),
         ],
       ),

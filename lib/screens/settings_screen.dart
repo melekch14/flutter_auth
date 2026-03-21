@@ -2,10 +2,13 @@
 import 'package:http/http.dart' as http;
 import '../services/session.dart';
 import '../services/api_config.dart';
+import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
 import '../widgets/ride_widgets.dart';
 import 'login_screen.dart';
+import 'home_screen.dart';
+import 'profile_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -117,6 +120,49 @@ class SettingsScreen extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        backgroundColor: AppColors.surface,
+        selectedItemColor: AppColors.accent,
+        unselectedItemColor: AppColors.textMuted,
+        type: BottomNavigationBarType.fixed,
+        currentIndex: 0,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.of(context).pushAndRemoveUntil(
+              buildRideRoute(const HomeScreen()),
+              (route) => false,
+            );
+          } else if (index == 3) {
+            Navigator.of(context).pushAndRemoveUntil(
+              buildRideRoute(const ProfileScreen()),
+              (route) => false,
+            );
+          } else if (index == 1 || index == 2) {
+            Navigator.of(context).pushAndRemoveUntil(
+              buildRideRoute(const HomeScreen()),
+              (route) => false,
+            );
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_filled),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map_outlined),
+            label: 'Map',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long_outlined),
+            label: 'Trips',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
           ),
         ],
       ),
