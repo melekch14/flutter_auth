@@ -2,6 +2,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../services/session.dart';
+import '../services/api_config.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -11,13 +12,12 @@ import 'profile_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
-  static const String _backendBaseUrl = 'http://10.0.2.2:4000';
   const HomeScreen({super.key});
 
   Future<void> _logout(BuildContext context) async {
     if (AppSession.jwt != null) {
       await http.post(
-        Uri.parse('$_backendBaseUrl/api/auth/logout'),
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/logout'),
         headers: {'Authorization': 'Bearer ' + AppSession.jwt!},
       );
     }

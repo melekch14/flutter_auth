@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../services/session.dart';
+import '../services/api_config.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -18,7 +19,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const String _backendBaseUrl = 'http://10.0.2.2:4000';
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
@@ -37,7 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
       throw Exception('Missing Firebase token');
     }
     final response = await http.post(
-      Uri.parse('$_backendBaseUrl/api/auth/session'),
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/session'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + idToken,
@@ -47,8 +47,12 @@ class _LoginScreenState extends State<LoginScreen> {
       throw Exception('Session creation failed');
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    AppSession.jwt = body['token']?.toString();
-    AppSession.uid = body['uid']?.toString();
+    final token = body['token']?.toString();
+    final uid = body['uid']?.toString();
+    if (token == null || uid == null) {
+      throw Exception('Session response invalid');
+    }
+    await AppSession.save(token: token, userId: uid);
   }
 
   Future<void> _login() async {
@@ -255,4 +259,3 @@ class _InlineError extends StatelessWidget {
     );
   }
 }
-

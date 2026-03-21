@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../models/signup_data.dart';
 import '../services/session.dart';
+import '../services/api_config.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_reveal.dart';
@@ -29,7 +30,6 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
-  static const String _backendBaseUrl = 'http://10.0.2.2:4000';
   static const int _otpLength = 6;
   static const int _resendSeconds = 45;
 
@@ -142,7 +142,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       throw Exception('Missing Firebase token');
     }
     final response = await http.post(
-      Uri.parse('$_backendBaseUrl/api/auth/session'),
+      Uri.parse('${ApiConfig.baseUrl}/api/auth/session'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + idToken,
@@ -152,8 +152,12 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       throw Exception('Session creation failed');
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    AppSession.jwt = body['token']?.toString();
-    AppSession.uid = body['uid']?.toString();
+    final token = body['token']?.toString();
+    final uid = body['uid']?.toString();
+    if (token == null || uid == null) {
+      throw Exception('Session response invalid');
+    }
+    await AppSession.save(token: token, userId: uid);
   }
 
   Future<void> _verifyAndContinue() async {
@@ -187,7 +191,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
         final response = await http.post(
-          Uri.parse('$_backendBaseUrl/api/users'),
+          Uri.parse('${ApiConfig.baseUrl}/api/users'),
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + (AppSession.jwt ?? ''),
@@ -206,8 +210,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       }
 
       await FirebaseAuth.instance.signOut();
-      AppSession.jwt = null;
-      AppSession.uid = null;
+      await AppSession.clear();
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -486,5 +489,3 @@ class _InlineError extends StatelessWidget {
     );
   }
 }
-
-
