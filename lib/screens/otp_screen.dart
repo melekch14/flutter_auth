@@ -43,6 +43,11 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     super.initState();
     _controllers = List.generate(_otpLength, (_) => TextEditingController());
     _focusNodes = List.generate(_otpLength, (_) => FocusNode());
+    for (final node in _focusNodes) {
+      node.addListener(() {
+        if (mounted) setState(() {});
+      });
+    }
     _shakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 420),
@@ -288,17 +293,49 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                               const SizedBox(height: 10),
                             ],
                             Row(
-                              children: List.generate(_otpLength, (index) {
-                                final isFilled =
-                                    _controllers[index].text.isNotEmpty;
+                              children:
+                                  List.generate(_otpLength * 2 - 1, (index) {
+                                if (index.isOdd) {
+                                  return const SizedBox(width: 12);
+                                }
+                                final fieldIndex = index ~/ 2;
+                                final isFilled = _controllers[fieldIndex]
+                                    .text
+                                    .isNotEmpty;
                                 return Expanded(
-                                  child: Padding(
-                                    padding: EdgeInsets.only(
-                                      right: index == _otpLength - 1 ? 0 : 12,
+                                  child: AnimatedContainer(
+                                    duration:
+                                        const Duration(milliseconds: 160),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: _focusNodes[fieldIndex].hasFocus
+                                          ? const Color(0xFF273248)
+                                          : const Color(0xFF1D2433),
+                                      borderRadius:
+                                          BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: _focusNodes[fieldIndex].hasFocus
+                                            ? AppColors.accent
+                                            : AppColors.stroke
+                                                .withOpacity(0.95),
+                                        width: _focusNodes[fieldIndex].hasFocus
+                                            ? 1.6
+                                            : 1.2,
+                                      ),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x33000000),
+                                          blurRadius: 8,
+                                          offset: Offset(0, 4),
+                                        ),
+                                      ],
                                     ),
                                     child: TextField(
-                                      controller: _controllers[index],
-                                      focusNode: _focusNodes[index],
+                                      controller: _controllers[fieldIndex],
+                                      focusNode: _focusNodes[fieldIndex],
                                       keyboardType: TextInputType.number,
                                       textAlign: TextAlign.center,
                                       maxLength: 1,
@@ -311,37 +348,29 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                                       decoration: InputDecoration(
                                         counterText: '',
                                         hintText: '_',
-                                        prefixIcon: null,
-                                        filled: true,
-                                        fillColor: isFilled
-                                            ? AppColors.surfaceElevated
-                                            : AppColors.fieldFill,
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          borderSide: BorderSide(
-                                            color: isFilled
-                                                ? AppColors.accent
-                                                    .withOpacity(0.6)
-                                                : AppColors.stroke
-                                                    .withOpacity(0.8),
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(16),
-                                          borderSide: const BorderSide(
-                                            color: AppColors.accent,
-                                            width: 1.4,
-                                          ),
+                                        hintStyle: Theme.of(context)
+                                            .textTheme
+                                            .headlineSmall
+                                            ?.copyWith(
+                                              color: AppColors.textMuted,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        filled: false,
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          vertical: 10,
                                         ),
                                       ),
                                       onChanged: (value) {
                                         setState(() => _errorMessage = null);
                                         if (value.isEmpty) {
-                                          _handleOtpBackspace(index);
+                                          _handleOtpBackspace(fieldIndex);
                                         } else {
-                                          _handleOtpChange(index, value);
+                                          _handleOtpChange(fieldIndex, value);
                                         }
                                       },
                                     ),
