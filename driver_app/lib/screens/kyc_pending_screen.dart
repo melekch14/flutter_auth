@@ -42,7 +42,7 @@ class KycPendingScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Your documents are being reviewed. We’ll notify you once approved.',
+                      'Your documents are being reviewed. We will notify you once approved.',
                       style: Theme.of(context)
                           .textTheme
                           .bodyMedium
