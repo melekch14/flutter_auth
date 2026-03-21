@@ -79,6 +79,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _savingProfile = true;
       _profileMessage = null;
+      _profileIsError = false;
     });
     try {
       final response = await http.put(
@@ -95,13 +96,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       if (response.statusCode >= 400) {
         _setProfileMessage(
-          _readError(response, fallback: 'Update failed.'),
+          _readError(
+            response,
+            fallback: 'Update failed. (${response.statusCode})',
+          ),
           isError: true,
         );
         return;
       }
-      setState(() => _profileFuture = _fetchProfile());
-      _setProfileMessage('Profile updated successfully.');
+      try {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final user = body['user'] as Map<String, dynamic>?;
+        if (user != null) {
+          _firstNameController.text = user['first_name']?.toString() ?? '';
+          _lastNameController.text = user['last_name']?.toString() ?? '';
+          _emailController.text = user['email']?.toString() ?? '';
+          _phoneController.text = user['phone']?.toString() ?? '';
+          setState(() => _profileFuture = Future.value(user));
+        }
+      } catch (_) {}
+      _setProfileMessage('Profile updated successfully.', isError: false);
     } catch (_) {
       _setProfileMessage('Update failed.', isError: true);
     } finally {
@@ -292,6 +306,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   icon: Icons.person_outline,
                                   controller: _firstNameController,
                                   textInputAction: TextInputAction.next,
+                                  onChanged: (_) => setState(() {
+                                    _profileMessage = null;
+                                    _profileIsError = false;
+                                  }),
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -302,6 +320,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   icon: Icons.person_outline,
                                   controller: _lastNameController,
                                   textInputAction: TextInputAction.next,
+                                  onChanged: (_) => setState(() {
+                                    _profileMessage = null;
+                                    _profileIsError = false;
+                                  }),
                                 ),
                               ),
                             ],
@@ -314,6 +336,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             textInputAction: TextInputAction.next,
+                            onChanged: (_) => setState(() {
+                              _profileMessage = null;
+                              _profileIsError = false;
+                            }),
                           ),
                           const SizedBox(height: 10),
                           RideTextField(

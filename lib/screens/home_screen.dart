@@ -1,4 +1,5 @@
-ï»¿import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/session.dart';
 import '../services/api_config.dart';
@@ -10,8 +11,45 @@ import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  String _firstName = 'Rider';
+  bool _loadingName = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileName();
+  }
+
+  Future<void> _loadProfileName() async {
+    if (_loadingName || AppSession.jwt == null) return;
+    setState(() => _loadingName = true);
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/auth/me'),
+        headers: {'Authorization': 'Bearer ' + AppSession.jwt!},
+      );
+      if (response.statusCode < 400) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        final user = body['user'] as Map<String, dynamic>?;
+        final name = user?['first_name']?.toString();
+        if (name != null && name.trim().isNotEmpty) {
+          setState(() => _firstName = name.trim());
+        }
+      }
+    } catch (_) {
+      // Keep default name
+    } finally {
+      if (mounted) setState(() => _loadingName = false);
+    }
+  }
 
   Future<void> _logout(BuildContext context) async {
     if (AppSession.jwt != null) {
@@ -48,7 +86,7 @@ class HomeScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Good evening, Amina',
+                              'Good evening, $_firstName',
                               style: Theme.of(context)
                                   .textTheme
                                   .titleLarge
@@ -71,9 +109,9 @@ class HomeScreen extends StatelessWidget {
                             if (value == 'logout') {
                               _logout(context);
                             } else if (value == 'profile') {
-                              Navigator.of(context).push(
-                                buildRideRoute(const ProfileScreen()),
-                              );
+                              Navigator.of(context)
+                                  .push(buildRideRoute(const ProfileScreen()))
+                                  .then((_) => _loadProfileName());
                             } else if (value == 'settings') {
                               Navigator.of(context).push(
                                 buildRideRoute(const SettingsScreen()),
@@ -184,7 +222,7 @@ class HomeScreen extends StatelessWidget {
                           delay: Duration(milliseconds: 300),
                           child: RideTile(
                             title: 'RideWave Go',
-                            subtitle: '2 min away Â· 4 seats',
+                            subtitle: '2 min away · 4 seats',
                             price: 'TND 8.4',
                           ),
                         ),
@@ -193,7 +231,7 @@ class HomeScreen extends StatelessWidget {
                           delay: Duration(milliseconds: 340),
                           child: RideTile(
                             title: 'RideWave Comfort',
-                            subtitle: '5 min away Â· Extra legroom',
+                            subtitle: '5 min away · Extra legroom',
                             price: 'TND 12.1',
                           ),
                         ),
@@ -202,7 +240,7 @@ class HomeScreen extends StatelessWidget {
                           delay: Duration(milliseconds: 380),
                           child: RideTile(
                             title: 'RideWave XL',
-                            subtitle: '7 min away Â· 6 seats',
+                            subtitle: '7 min away · 6 seats',
                             price: 'TND 16.6',
                           ),
                         ),
@@ -223,9 +261,9 @@ class HomeScreen extends StatelessWidget {
         currentIndex: 0,
         onTap: (index) {
           if (index == 3) {
-            Navigator.of(context).push(
-              buildRideRoute(const ProfileScreen()),
-            );
+            Navigator.of(context)
+                .push(buildRideRoute(const ProfileScreen()))
+                .then((_) => _loadProfileName());
           }
         },
         items: const [
