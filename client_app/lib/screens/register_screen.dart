@@ -89,6 +89,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           email: email,
           phone: fullPhone,
           password: password,
+          role: 'client',
         );
         Navigator.of(context).push(
           buildRideRoute(

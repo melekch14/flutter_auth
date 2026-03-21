@@ -256,6 +256,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 final lastName = data?['last_name']?.toString();
                                 final fullName =
                                     '${firstName ?? 'User'} ${lastName ?? ''}'.trim();
+                                final status =
+                                    data?['status']?.toString() ?? 'verified';
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -267,12 +269,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           ?.copyWith(fontWeight: FontWeight.w700),
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(
-                                      data?['email']?.toString() ?? 'No email',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: AppColors.textMuted),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          data?['email']?.toString() ?? 'No email',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: AppColors.textMuted,
+                                              ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        _StatusBadge(status: status),
+                                      ],
                                     ),
                                   ],
                                 );
@@ -559,6 +569,38 @@ class _InlineMessage extends StatelessWidget {
             child: Icon(Icons.close, color: textColor, size: 16),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final isVerified = status.toLowerCase() == 'verified';
+    final label = isVerified ? 'Verified' : 'Pending';
+    final bg = isVerified ? const Color(0x2632D583) : const Color(0x26FFB347);
+    final border =
+        isVerified ? const Color(0x6642F5A6) : const Color(0x66FFB347);
+    final text = isVerified ? const Color(0xFF7AF5C5) : const Color(0xFFFFD59E);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall
+            ?.copyWith(color: text, fontWeight: FontWeight.w600),
       ),
     );
   }

@@ -153,6 +153,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           'phone': widget.data.phone,
           'password': widget.data.password,
           'code': smsCode,
+          'role': widget.data.role,
         }),
       );
       if (registerResponse.statusCode >= 400) {

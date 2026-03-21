@@ -86,15 +86,29 @@ async function runMigrations(pool) {
       email text NOT NULL,
       phone text NOT NULL,
       password_hash text NOT NULL,
+      role text NOT NULL DEFAULT 'client',
+      status text NOT NULL DEFAULT 'verified',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
   await pool.query(
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'client'"
+  );
+  await pool.query(
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'verified'"
+  );
+  await pool.query(
     'CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (email)'
   );
   await pool.query(
     'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_key ON users (phone)'
+  );
+  await pool.query(
+    "UPDATE users SET role = 'client' WHERE role IS NULL"
+  );
+  await pool.query(
+    "UPDATE users SET status = 'verified' WHERE status IS NULL"
   );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS revoked_tokens (
@@ -220,11 +234,17 @@ async function bootstrap() {
   });
 
   app.post('/api/auth/register', async (req, res) => {
-    const { first_name, last_name, email, phone, password, code } =
+    const { first_name, last_name, email, phone, password, code, role } =
       req.body || {};
     if (!first_name || !last_name || !email || !phone || !password || !code) {
       return res.status(400).json({ error: 'Missing required fields.' });
     }
+    const normalizedRole = (role || 'client').toString().toLowerCase();
+    if (!['client', 'driver', 'admin'].includes(normalizedRole)) {
+      return res.status(400).json({ error: 'Invalid role.' });
+    }
+    const status =
+      normalizedRole === 'driver' ? 'not_verified' : 'verified';
 
     try {
       const check = await twilioClient.verify.v2
@@ -236,11 +256,19 @@ async function bootstrap() {
 
       const passwordHash = await bcrypt.hash(password, 12);
       const query = `
-        INSERT INTO users (first_name, last_name, email, phone, password_hash)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, first_name, last_name, email, phone
+        INSERT INTO users (first_name, last_name, email, phone, password_hash, role, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, first_name, last_name, email, phone, role, status
       `;
-      const values = [first_name, last_name, email, phone, passwordHash];
+      const values = [
+        first_name,
+        last_name,
+        email,
+        phone,
+        passwordHash,
+        normalizedRole,
+        status,
+      ];
       const { rows } = await pool.query(query, values);
       const { token } = issueJwt(rows[0].id);
       return res.json({ token, user: rows[0] });
@@ -281,6 +309,8 @@ async function bootstrap() {
           last_name: user.last_name,
           email: user.email,
           phone: user.phone,
+          role: user.role,
+          status: user.status,
         },
       });
     } catch (err) {
@@ -306,7 +336,7 @@ async function bootstrap() {
   app.get('/api/auth/me', requireJwt(), async (req, res) => {
     try {
       const { rows } = await pool.query(
-        'SELECT id, first_name, last_name, email, phone FROM users WHERE id = $1',
+        'SELECT id, first_name, last_name, email, phone, role, status FROM users WHERE id = $1',
         [req.user.uid]
       );
       if (rows.length === 0) {
@@ -336,7 +366,7 @@ async function bootstrap() {
         `UPDATE users
          SET first_name = $1, last_name = $2, email = $3, updated_at = now()
          WHERE id = $4
-         RETURNING id, first_name, last_name, email, phone`,
+         RETURNING id, first_name, last_name, email, phone, role, status`,
         [first_name, last_name, email, req.user.uid]
       );
       if (rows.length === 0) {

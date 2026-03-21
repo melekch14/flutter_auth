@@ -5,6 +5,7 @@
     required this.email,
     required this.phone,
     required this.password,
+    required this.role,
   });
 
   final String firstName;
@@ -12,4 +13,5 @@
   final String email;
   final String phone;
   final String password;
+  final String role;
 }
