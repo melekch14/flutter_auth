@@ -269,21 +269,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           ?.copyWith(fontWeight: FontWeight.w700),
                                     ),
                                     const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          data?['email']?.toString() ?? 'No email',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: AppColors.textMuted,
-                                              ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        _StatusBadge(status: status),
-                                      ],
+                                    Text(
+                                      data?['email']?.toString() ?? 'No email',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: AppColors.textMuted,
+                                          ),
                                     ),
+                                    const SizedBox(height: 6),
+                                    _StatusBadge(status: status),
                                   ],
                                 );
                               },
