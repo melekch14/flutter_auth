@@ -318,6 +318,72 @@ async function bootstrap() {
     }
   });
 
+  app.put('/api/auth/me', requireJwt(), async (req, res) => {
+    const { first_name, last_name, email, phone } = req.body || {};
+    if (!first_name || !last_name || !email || !phone) {
+      return res.status(400).json({ error: 'All fields are required.' });
+    }
+    try {
+      const { rows: dup } = await pool.query(
+        'SELECT 1 FROM users WHERE (email = $1 OR phone = $2) AND id <> $3 LIMIT 1',
+        [email, phone, req.user.uid]
+      );
+      if (dup.length > 0) {
+        return res
+          .status(409)
+          .json({ error: 'Email or phone already exists.' });
+      }
+
+      const { rows } = await pool.query(
+        `UPDATE users
+         SET first_name = $1, last_name = $2, email = $3, phone = $4, updated_at = now()
+         WHERE id = $5
+         RETURNING id, first_name, last_name, email, phone`,
+        [first_name, last_name, email, phone, req.user.uid]
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'User not found.' });
+      }
+      return res.json({ user: rows[0] });
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error.' });
+    }
+  });
+
+  app.put('/api/auth/change-password', requireJwt(), async (req, res) => {
+    const { current_password, new_password, confirm_password } = req.body || {};
+    if (!current_password || !new_password || !confirm_password) {
+      return res.status(400).json({ error: 'All fields are required.' });
+    }
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ error: 'Passwords do not match.' });
+    }
+    try {
+      const { rows } = await pool.query(
+        'SELECT password_hash FROM users WHERE id = $1',
+        [req.user.uid]
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ error: 'User not found.' });
+      }
+      const ok = await bcrypt.compare(
+        current_password,
+        rows[0].password_hash
+      );
+      if (!ok) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+      const newHash = await bcrypt.hash(new_password, 12);
+      await pool.query(
+        'UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2',
+        [newHash, req.user.uid]
+      );
+      return res.json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({ error: 'Server error.' });
+    }
+  });
+
   app.listen(PORT, () => {
     console.log(`Backend running on http://localhost:${PORT}`);
   });
