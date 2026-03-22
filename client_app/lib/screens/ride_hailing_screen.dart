@@ -108,7 +108,7 @@ class _RideHailingViewState extends State<_RideHailingView> {
       PointAnnotationOptions(
         geometry: geometry,
         iconImage: 'marker-15',
-        iconSize: 1.8,
+        iconSize: 1.9,
       ),
     );
   }
@@ -250,9 +250,7 @@ class _RideHailingViewState extends State<_RideHailingView> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<RideHailingProvider>();
-    final canConfirm =
-        provider.destination != null && provider.selectedIndex >= 0;
-    final price = provider.selectedPrice();
+    final hasDestination = provider.destination != null;
 
     return Scaffold(
       body: Stack(
@@ -285,17 +283,21 @@ class _RideHailingViewState extends State<_RideHailingView> {
           ),
           Positioned.fill(
             child: IgnorePointer(
-              child: Center(
-                child: Icon(
-                  Icons.place,
-                  size: 40,
-                  color: AppColors.accent,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withOpacity(0.35),
-                      blurRadius: 10,
-                    ),
-                  ],
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 250),
+                opacity: hasDestination ? 0 : 1,
+                child: Center(
+                  child: Icon(
+                    Icons.place,
+                    size: 40,
+                    color: AppColors.accent,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withOpacity(0.35),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -324,10 +326,10 @@ class _RideHailingViewState extends State<_RideHailingView> {
             right: 16,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 200),
-              opacity: _mapCenter == null ? 0 : 1,
+              opacity: _mapCenter == null || hasDestination ? 0 : 1,
               child: FloatingActionButton.extended(
                 heroTag: 'set-destination',
-                onPressed: _mapCenter == null
+                onPressed: _mapCenter == null || hasDestination
                     ? null
                     : () => _setDestination(
                           _mapCenter!,
@@ -344,40 +346,6 @@ class _RideHailingViewState extends State<_RideHailingView> {
             child: Align(
               alignment: Alignment.bottomCenter,
               child: _TripSheet(routeLoading: _routeLoading),
-            ),
-          ),
-          Positioned(
-            bottom: 14,
-            left: 16,
-            right: 16,
-            child: SafeArea(
-              top: false,
-              child: ElevatedButton(
-                onPressed: canConfirm ? () {} : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: Colors.black,
-                  disabledBackgroundColor: AppColors.stroke,
-                  disabledForegroundColor: AppColors.textMuted,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    canConfirm
-                        ? 'Confirm Ride – TND ${price!.toStringAsFixed(2)}'
-                        : 'Select destination & ride',
-                    key: ValueKey(canConfirm ? 'on' : 'off'),
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
             ),
           ),
         ],
@@ -469,10 +437,14 @@ class _TripSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<RideHailingProvider>();
+    final canConfirm =
+        provider.destination != null && provider.selectedIndex >= 0;
+    final price = provider.selectedPrice();
+
     return DraggableScrollableSheet(
-      initialChildSize: 0.28,
-      minChildSize: 0.22,
-      maxChildSize: 0.62,
+      initialChildSize: 0.32,
+      minChildSize: 0.26,
+      maxChildSize: 0.68,
       builder: (context, controller) {
         return Container(
           decoration: const BoxDecoration(
@@ -481,7 +453,7 @@ class _TripSheet extends StatelessWidget {
           ),
           child: ListView(
             controller: controller,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 90),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
             children: [
               Center(
                 child: Container(
@@ -493,7 +465,7 @@ class _TripSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   const Icon(Icons.my_location, color: AppColors.accent),
@@ -515,7 +487,7 @@ class _TripSheet extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   const Icon(Icons.flag, color: AppColors.accentSoft),
@@ -547,13 +519,13 @@ class _TripSheet extends StatelessWidget {
                     .bodyMedium
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               ...List.generate(provider.options.length, (index) {
                 final option = provider.options[index];
                 final selected = provider.selectedIndex == index;
                 final price = provider.priceFor(option);
                 return AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: const Duration(milliseconds: 240),
                   curve: Curves.easeOut,
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.all(12),
@@ -567,14 +539,23 @@ class _TripSheet extends StatelessWidget {
                           : AppColors.stroke.withOpacity(0.8),
                       width: selected ? 1.4 : 1,
                     ),
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                              color: AppColors.accent.withOpacity(0.16),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ]
+                        : [],
                   ),
                   child: InkWell(
                     onTap: () => provider.selectOption(index),
                     child: Row(
                       children: [
                         Container(
-                          width: 44,
-                          height: 44,
+                          width: 46,
+                          height: 46,
                           decoration: BoxDecoration(
                             color: AppColors.accent.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(12),
@@ -586,16 +567,24 @@ class _TripSheet extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                option.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(
+                                    option.name,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                  _EtaPill(value: '${option.etaMinutes} min'),
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${option.subtitle} · ${option.seats} seats · ${option.etaMinutes} min',
+                                '${option.subtitle} · ${option.seats} seats',
                                 style: Theme.of(context)
                                     .textTheme
                                     .bodySmall
@@ -605,18 +594,61 @@ class _TripSheet extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'TND ${price.toStringAsFixed(2)}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'TND ${price.toStringAsFixed(2)}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Est. fare',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(color: AppColors.textMuted),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 );
               }),
+              const SizedBox(height: 6),
+              SafeArea(
+                top: false,
+                child: ElevatedButton(
+                  onPressed: canConfirm ? () {} : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.black,
+                    disabledBackgroundColor: AppColors.stroke,
+                    disabledForegroundColor: AppColors.textMuted,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Text(
+                      canConfirm
+                          ? 'Confirm Ride – TND ${price!.toStringAsFixed(2)}'
+                          : 'Select destination & ride',
+                      key: ValueKey(canConfirm ? 'on' : 'off'),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         );
@@ -659,6 +691,31 @@ class _StatChip extends StatelessWidget {
                 ?.copyWith(fontWeight: FontWeight.w600),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EtaPill extends StatelessWidget {
+  const _EtaPill({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.accent.withOpacity(0.45)),
+      ),
+      child: Text(
+        value,
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall
+            ?.copyWith(color: AppColors.accent),
       ),
     );
   }
