@@ -10,6 +10,7 @@ import '../widgets/ride_widgets.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
+import 'ride_hailing_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -182,19 +183,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const DelayedFadeSlide(
-                    delay: Duration(milliseconds: 220),
+                  DelayedFadeSlide(
+                    delay: const Duration(milliseconds: 220),
                     child: Row(
                       children: [
                         Expanded(
-                          child: ActionCard(
-                            icon: Icons.local_taxi,
-                            title: 'Ride now',
-                            subtitle: 'Fast pickup',
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                buildRideRoute(const RideHailingScreen()),
+                              );
+                            },
+                            child: const ActionCard(
+                              icon: Icons.local_taxi,
+                              title: 'Ride now',
+                              subtitle: 'Fast pickup',
+                            ),
                           ),
                         ),
-                        SizedBox(width: 12),
-                        Expanded(
+                        const SizedBox(width: 12),
+                        const Expanded(
                           child: ActionCard(
                             icon: Icons.calendar_today_outlined,
                             title: 'Schedule',
