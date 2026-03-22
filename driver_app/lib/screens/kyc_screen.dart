@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,19 +27,18 @@ class _KycScreenState extends State<KycScreen>
   XFile? _selfie;
 
   bool _uploading = false;
+  double _uploadProgress = 0;
   String? _errorMessage;
   late final AnimationController _progressController;
-  late final Animation<double> _progressAnimation;
+  bool _hasProgress = false;
 
   @override
   void initState() {
     super.initState();
     _progressController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: const Duration(milliseconds: 420),
     );
-    _progressAnimation =
-        CurvedAnimation(parent: _progressController, curve: Curves.easeInOut);
   }
 
   @override
@@ -79,9 +79,11 @@ class _KycScreenState extends State<KycScreen>
 
     setState(() {
       _uploading = true;
+      _uploadProgress = 0;
+      _hasProgress = false;
       _errorMessage = null;
     });
-    _progressController.repeat(reverse: true);
+    _progressController.value = 0;
 
     try {
       final request = http.MultipartRequest(
@@ -102,10 +104,47 @@ class _KycScreenState extends State<KycScreen>
         _selfie!.path,
       ));
 
-      final response = await request.send();
+      final totalBytes = request.contentLength;
+      _hasProgress = totalBytes > 0;
+      final stream = request.finalize();
+
+      final streamed = http.StreamedRequest('POST', request.url);
+      streamed.headers.addAll(request.headers);
+      streamed.contentLength = totalBytes;
+
+      final client = http.Client();
+
+      int sent = 0;
+      final completer = Completer<void>();
+      stream.listen(
+        (data) {
+          sent += data.length;
+          if (totalBytes > 0) {
+            final progress = sent / totalBytes;
+            _setProgress(progress.clamp(0, 1));
+          }
+          streamed.sink.add(data);
+        },
+        onDone: () {
+          streamed.sink.close();
+          completer.complete();
+        },
+        onError: (error) {
+          streamed.sink.addError(error);
+          completer.completeError(error);
+        },
+        cancelOnError: true,
+      );
+
+      await completer.future;
+      final response = await client.send(streamed);
       final status = response.statusCode;
+      final bodyText = await response.stream.bytesToString();
+      client.close();
       if (status >= 400) {
-        setState(() => _errorMessage = 'Upload failed. Please try again.');
+        final message = _readError(bodyText) ??
+            'Upload failed. Please try again. (${response.statusCode})';
+        setState(() => _errorMessage = message);
         return;
       }
 
@@ -116,9 +155,29 @@ class _KycScreenState extends State<KycScreen>
     } catch (_) {
       setState(() => _errorMessage = 'Upload failed. Please try again.');
     } finally {
-      _progressController.stop();
       if (mounted) setState(() => _uploading = false);
     }
+  }
+
+  String? _readError(String body) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map<String, dynamic>) {
+        final error = data['error']?.toString();
+        if (error != null && error.trim().isNotEmpty) return error;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  void _setProgress(double value) {
+    _uploadProgress = value;
+    _progressController.animateTo(
+      value,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutCubic,
+    );
+    if (mounted) setState(() {});
   }
 
   @override
@@ -163,29 +222,51 @@ class _KycScreenState extends State<KycScreen>
                   if (_uploading)
                     DelayedFadeSlide(
                       delay: const Duration(milliseconds: 240),
-                      child: AnimatedBuilder(
-                        animation: _progressAnimation,
-                        builder: (context, _) {
-                          return Column(
-                            children: [
-                              LinearProgressIndicator(
-                                value: _progressAnimation.value,
-                                backgroundColor: AppColors.surfaceElevated,
-                                color: AppColors.accent,
-                                minHeight: 6,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Uploading your documents...',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: AppColors.textMuted),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
+                      child: !_hasProgress
+                          ? Column(
+                              children: [
+                                LinearProgressIndicator(
+                                  backgroundColor: AppColors.surfaceElevated,
+                                  color: AppColors.accent,
+                                  minHeight: 6,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Uploading your documents...',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(color: AppColors.textMuted),
+                                ),
+                              ],
+                            )
+                          : AnimatedBuilder(
+                              animation: _progressController,
+                              builder: (context, _) {
+                                final value = _progressController.value;
+                                return Column(
+                                  children: [
+                                    LinearProgressIndicator(
+                                      value: value.clamp(0, 1),
+                                      backgroundColor:
+                                          AppColors.surfaceElevated,
+                                      color: AppColors.accent,
+                                      minHeight: 6,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Uploading your documents... ${(value * 100).round()}%',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: AppColors.textMuted,
+                                          ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
                     ),
                   const SizedBox(height: 16),
                   DelayedFadeSlide(
